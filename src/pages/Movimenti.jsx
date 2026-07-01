@@ -1,0 +1,175 @@
+import { useEffect, useState } from 'react'
+import { supabase } from '../supabaseClient'
+import TagChip from '../components/TagChip'
+
+const oggi = () => new Date().toISOString().slice(0, 10)
+
+export default function Movimenti() {
+  const [articoli, setArticoli] = useState([])
+  const [dipendenti, setDipendenti] = useState([])
+  const [movimenti, setMovimenti] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const [form, setForm] = useState({
+    data_mov: oggi(), tipo: 'Scarico', articolo_id: '', quantita: 1, dipendente_id: '', note: '',
+  })
+
+  async function loadAll() {
+    setLoading(true)
+    const [{ data: art }, { data: dip }, { data: mov, error: movErr }] = await Promise.all([
+      supabase.from('articoli').select('*').eq('attivo', true).order('tipologia'),
+      supabase.from('dipendenti').select('*, sedi(nome)').eq('attivo', true).order('cognome'),
+      supabase.from('movimenti')
+        .select('*, articoli(codice, tipologia, colore, genere, taglia), dipendenti(nome, cognome)')
+        .order('data_mov', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(60),
+    ])
+    setArticoli(art || [])
+    setDipendenti(dip || [])
+    if (movErr) setError(movErr.message)
+    setMovimenti(mov || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadAll() }, [])
+
+  function updateField(k, v) {
+    setForm(f => ({ ...f, [k]: v }))
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+
+    if (!form.articolo_id) return setError('Seleziona un articolo.')
+    if (form.tipo === 'Scarico' && !form.dipendente_id) return setError('Per uno scarico devi indicare il dipendente.')
+
+    const { data: userData } = await supabase.auth.getUser()
+
+    const payload = {
+      data_mov: form.data_mov,
+      tipo: form.tipo,
+      articolo_id: form.articolo_id,
+      quantita: Number(form.quantita),
+      dipendente_id: form.tipo === 'Scarico' ? form.dipendente_id : (form.dipendente_id || null),
+      note: form.note || null,
+      creato_da: userData?.user?.id || null,
+    }
+
+    const { error } = await supabase.from('movimenti').insert(payload)
+    if (error) {
+      setError(error.message.includes('Giacenza insufficiente') ? error.message : `Errore: ${error.message}`)
+      return
+    }
+    setSuccess('Movimento registrato correttamente.')
+    setForm(f => ({ ...f, quantita: 1, note: '' }))
+    loadAll()
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h2>Movimenti</h2>
+          <p className="sub">Registra un carico (arrivo dal fornitore) o uno scarico (assegnazione a un dipendente).</p>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Nuovo movimento</h3>
+        {error && <div className="alert error">{error}</div>}
+        {success && <div className="alert success">{success}</div>}
+        <form onSubmit={handleSubmit}>
+          <div className="form-grid">
+            <div className="field">
+              <label>Data</label>
+              <input type="date" value={form.data_mov} onChange={e => updateField('data_mov', e.target.value)} required />
+            </div>
+            <div className="field">
+              <label>Tipo movimento</label>
+              <select value={form.tipo} onChange={e => updateField('tipo', e.target.value)}>
+                <option>Scarico</option>
+                <option>Carico</option>
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <label>Articolo</label>
+              <select value={form.articolo_id} onChange={e => updateField('articolo_id', e.target.value)} required>
+                <option value="">Seleziona articolo…</option>
+                {articoli.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.tipologia} · {a.colore} · {a.genere} · {a.taglia} ({a.codice})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Quantità</label>
+              <input type="number" min="1" value={form.quantita} onChange={e => updateField('quantita', e.target.value)} required />
+            </div>
+            <div className="field">
+              <label>Dipendente {form.tipo === 'Scarico' && '(obbligatorio)'}</label>
+              <select value={form.dipendente_id} onChange={e => updateField('dipendente_id', e.target.value)}>
+                <option value="">{form.tipo === 'Carico' ? '— non applicabile —' : 'Seleziona dipendente…'}</option>
+                {dipendenti.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.cognome} {d.nome} — {d.sedi?.nome || 'senza sede'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <label>Note</label>
+              <input type="text" placeholder="Es. Ordine fornitore X / Sostituzione per usura" value={form.note} onChange={e => updateField('note', e.target.value)} />
+            </div>
+          </div>
+          <button className="btn btn-primary">Registra movimento</button>
+        </form>
+      </div>
+
+      <div className="card">
+        <h3>Ultimi movimenti</h3>
+        {loading ? (
+          <div className="empty-state">Caricamento…</div>
+        ) : movimenti.length === 0 ? (
+          <div className="empty-state">Nessun movimento registrato ancora.</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Articolo</th>
+                <th>Qtà</th>
+                <th>Dipendente</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movimenti.map(m => (
+                <tr key={m.id}>
+                  <td className="mono">{m.data_mov}</td>
+                  <td><span className={`badge ${m.tipo === 'Carico' ? 'carico' : 'scarico'}`}>{m.tipo}</span></td>
+                  <td>
+                    {m.articoli
+                      ? <TagChip colore={m.articoli.colore} genere={m.articoli.genere} taglia={m.articoli.taglia} codice={m.articoli.codice} />
+                      : '—'}
+                    {' '}
+                    <span style={{ color: 'var(--graphite)', fontSize: 12.5 }}>{m.articoli?.tipologia}</span>
+                  </td>
+                  <td className="mono">{m.quantita}</td>
+                  <td>{m.dipendenti ? `${m.dipendenti.cognome} ${m.dipendenti.nome}` : '—'}</td>
+                  <td style={{ color: 'var(--graphite)' }}>{m.note || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
