@@ -16,7 +16,17 @@ export default function Dipendenti() {
   const vuoto = { nome: '', cognome: '', sede_id: '', ruolo_id: '' }
   const [form, setForm] = useState(vuoto)
   const [nuovaSede, setNuovaSede] = useState('')
+  const [nuovaSedeRegione, setNuovaSedeRegione] = useState('')
   const [nuovoRuolo, setNuovoRuolo] = useState('')
+
+  // Sedi raggruppate per regione, per popolare i menu a tendina in modo ordinato
+  const sediPerRegione = sedi.reduce((acc, s) => {
+    const reg = s.regione || 'Altre sedi'
+    acc[reg] = acc[reg] || []
+    acc[reg].push(s)
+    return acc
+  }, {})
+  const regioniOrdinate = Object.keys(sediPerRegione).sort()
 
   async function load() {
     setLoading(true)
@@ -54,8 +64,11 @@ export default function Dipendenti() {
   async function aggiungiSede(e) {
     e.preventDefault()
     if (!nuovaSede.trim()) return
-    const { error } = await supabase.from('sedi').insert({ nome: nuovaSede.trim() })
-    if (!error) { setNuovaSede(''); load() }
+    const { error } = await supabase.from('sedi').insert({
+      nome: nuovaSede.trim(),
+      regione: nuovaSedeRegione.trim() || null,
+    })
+    if (!error) { setNuovaSede(''); setNuovaSedeRegione(''); load() }
   }
 
   async function aggiungiRuolo(e) {
@@ -87,10 +100,17 @@ export default function Dipendenti() {
 
   const gruppi = filtrati.reduce((acc, d) => {
     const nomeSede = d.sedi?.nome || 'Senza sede'
-    acc[nomeSede] = acc[nomeSede] || []
-    acc[nomeSede].push(d)
+    const regione = d.sedi?.regione || ''
+    const chiave = nomeSede
+    acc[chiave] = acc[chiave] || { regione, dipendenti: [] }
+    acc[chiave].dipendenti.push(d)
     return acc
   }, {})
+  const gruppiOrdinati = Object.entries(gruppi).sort((a, b) => {
+    const regA = a[1].regione, regB = b[1].regione
+    if (regA !== regB) return regA.localeCompare(regB)
+    return a[0].localeCompare(b[0])
+  })
 
   return (
     <div>
@@ -119,7 +139,11 @@ export default function Dipendenti() {
               <label>Sede</label>
               <select value={form.sede_id} onChange={e => setForm(f => ({ ...f, sede_id: e.target.value }))}>
                 <option value="">— nessuna —</option>
-                {sedi.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                {regioniOrdinate.map(reg => (
+                  <optgroup key={reg} label={reg}>
+                    {sediPerRegione[reg].map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </div>
             <div className="field">
@@ -136,10 +160,17 @@ export default function Dipendenti() {
         <details style={{ marginTop: 16 }}>
           <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--graphite)' }}>Gestisci sedi e ruoli</summary>
           <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-            <form onSubmit={aggiungiSede} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <form onSubmit={aggiungiSede} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div className="field" style={{ marginBottom: 0 }}>
                 <label>Nuova sede</label>
-                <input value={nuovaSede} onChange={e => setNuovaSede(e.target.value)} placeholder="es. Filiale Est" />
+                <input value={nuovaSede} onChange={e => setNuovaSede(e.target.value)} placeholder="es. Centro Medico Est" />
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Regione</label>
+                <input value={nuovaSedeRegione} onChange={e => setNuovaSedeRegione(e.target.value)} placeholder="es. Lombardia" list="elenco-regioni" />
+                <datalist id="elenco-regioni">
+                  {regioniOrdinate.map(r => <option key={r} value={r} />)}
+                </datalist>
               </div>
               <button className="btn btn-secondary">Aggiungi sede</button>
             </form>
@@ -157,18 +188,25 @@ export default function Dipendenti() {
       <div className="filter-bar">
         <select value={filtroSede} onChange={e => setFiltroSede(e.target.value)}>
           <option value="">Tutte le sedi</option>
-          {sedi.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+          {regioniOrdinate.map(reg => (
+            <optgroup key={reg} label={reg}>
+              {sediPerRegione[reg].map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+            </optgroup>
+          ))}
         </select>
       </div>
 
       {loading ? (
         <div className="card"><div className="empty-state">Caricamento…</div></div>
-      ) : Object.keys(gruppi).length === 0 ? (
+      ) : gruppiOrdinati.length === 0 ? (
         <div className="card"><div className="empty-state">Nessun dipendente trovato.</div></div>
       ) : (
-        Object.entries(gruppi).map(([nomeSede, lista]) => (
+        gruppiOrdinati.map(([nomeSede, gruppo]) => (
           <div className="card" key={nomeSede}>
-            <h3>{nomeSede} — {lista.length} dipendenti</h3>
+            <h3>
+              {nomeSede} — {gruppo.dipendenti.length} dipendenti
+              {gruppo.regione && <span style={{ color: 'var(--graphite)', fontWeight: 400 }}> · {gruppo.regione}</span>}
+            </h3>
             <table>
               <thead>
                 <tr>
@@ -179,7 +217,7 @@ export default function Dipendenti() {
                 </tr>
               </thead>
               <tbody>
-                {lista.map(d => (
+                {gruppo.dipendenti.map(d => (
                   <>
                     <tr key={d.id}>
                       <td>{d.cognome} {d.nome}</td>
