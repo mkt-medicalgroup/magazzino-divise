@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import TagChip from '../components/TagChip'
 
 const oggi = () => new Date().toISOString().slice(0, 10)
+const STATI = ['Consegnato', 'Reso', 'Altro']
 
 export default function Movimenti() {
   const [articoli, setArticoli] = useState([])
@@ -15,14 +16,14 @@ export default function Movimenti() {
   const [filtroAzienda, setFiltroAzienda] = useState('')
 
   const [form, setForm] = useState({
-    data_mov: oggi(), tipo: 'Scarico', articolo_id: '', quantita: 1, dipendente_id: '', azienda_id: '', note: '',
+    data_mov: oggi(), tipo: 'Scarico', articolo_id: '', quantita: 1, dipendente_id: '', azienda_id: '', stato: 'Consegnato', note: '',
   })
 
   async function loadAll() {
     setLoading(true)
     const [{ data: art }, { data: dip }, { data: az }, { data: mov, error: movErr }] = await Promise.all([
       supabase.from('articoli').select('*').eq('attivo', true).order('tipologia'),
-      supabase.from('dipendenti').select('*, sedi(nome)').eq('attivo', true).order('cognome'),
+      supabase.from('dipendenti').select('*, sedi(nome, azienda_id)').eq('attivo', true).order('cognome'),
       supabase.from('aziende').select('*').order('nome'),
       supabase.from('movimenti')
         .select('*, articoli(codice, tipologia, colore, genere, taglia), dipendenti(nome, cognome), aziende(nome)')
@@ -44,6 +45,19 @@ export default function Movimenti() {
     setForm(f => ({ ...f, [k]: v }))
   }
 
+  // Se è uno scarico e il dipendente è collegato a una sede con società nota,
+  // la società si deduce automaticamente (non serve selezionarla a mano).
+  const dipendenteSelezionato = dipendenti.find(d => d.id === form.dipendente_id)
+  const aziendaDedotta = form.tipo === 'Scarico' ? dipendenteSelezionato?.sedi?.azienda_id : null
+  const aziendaDedottaNome = aziendaDedotta ? aziende.find(a => a.id === aziendaDedotta)?.nome : null
+
+  useEffect(() => {
+    if (form.tipo === 'Scarico' && aziendaDedotta) {
+      setForm(f => (f.azienda_id === aziendaDedotta ? f : { ...f, azienda_id: aziendaDedotta }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aziendaDedotta, form.tipo])
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
@@ -62,6 +76,7 @@ export default function Movimenti() {
       azienda_id: form.azienda_id,
       quantita: Number(form.quantita),
       dipendente_id: form.tipo === 'Scarico' ? form.dipendente_id : (form.dipendente_id || null),
+      stato: form.tipo === 'Scarico' ? form.stato : null,
       note: form.note || null,
       creato_da: userData?.user?.id || null,
     }
@@ -72,7 +87,7 @@ export default function Movimenti() {
       return
     }
     setSuccess('Movimento registrato correttamente.')
-    setForm(f => ({ ...f, quantita: 1, note: '' }))
+    setForm(f => ({ ...f, quantita: 1, note: '', stato: 'Consegnato' }))
     loadAll()
   }
 
@@ -83,7 +98,7 @@ export default function Movimenti() {
       <div className="page-header">
         <div>
           <h2>Movimenti</h2>
-          <p className="sub">Registra un carico (arrivo dal fornitore) o uno scarico (assegnazione), indicando sempre la società di riferimento.</p>
+          <p className="sub">Registra un carico (arrivo dal fornitore) o uno scarico (assegnazione). Per gli scarichi la società si deduce automaticamente dalla sede del dipendente.</p>
         </div>
       </div>
 
@@ -104,13 +119,22 @@ export default function Movimenti() {
                 <option>Carico</option>
               </select>
             </div>
-            <div className="field" style={{ gridColumn: 'span 2' }}>
-              <label>Società</label>
-              <select value={form.azienda_id} onChange={e => updateField('azienda_id', e.target.value)} required>
-                <option value="">Seleziona società…</option>
-                {aziende.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
-              </select>
-            </div>
+
+            {form.tipo === 'Carico' || !aziendaDedotta ? (
+              <div className="field" style={{ gridColumn: 'span 2' }}>
+                <label>Società {form.tipo === 'Scarico' && form.dipendente_id && '(la sede di questo dipendente non è ancora collegata a una società — selezionala qui, oppure collegala una volta per tutte in Dipendenti > Gestisci sedi)'}</label>
+                <select value={form.azienda_id} onChange={e => updateField('azienda_id', e.target.value)} required>
+                  <option value="">Seleziona società…</option>
+                  {aziende.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div className="field" style={{ gridColumn: 'span 2' }}>
+                <label>Società (dedotta automaticamente dalla sede)</label>
+                <input type="text" value={aziendaDedottaNome || ''} disabled className="mono" />
+              </div>
+            )}
+
             <div className="field" style={{ gridColumn: 'span 2' }}>
               <label>Articolo</label>
               <select value={form.articolo_id} onChange={e => updateField('articolo_id', e.target.value)} required>
@@ -137,6 +161,14 @@ export default function Movimenti() {
                 ))}
               </select>
             </div>
+            {form.tipo === 'Scarico' && (
+              <div className="field">
+                <label>Stato</label>
+                <select value={form.stato} onChange={e => updateField('stato', e.target.value)}>
+                  {STATI.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
             <div className="field" style={{ gridColumn: 'span 2' }}>
               <label>Note</label>
               <input type="text" placeholder="Es. Ordine fornitore X / Sostituzione per usura" value={form.note} onChange={e => updateField('note', e.target.value)} />
@@ -168,6 +200,7 @@ export default function Movimenti() {
                 <th>Articolo</th>
                 <th>Qtà</th>
                 <th>Dipendente</th>
+                <th>Stato</th>
                 <th>Note</th>
               </tr>
             </thead>
@@ -186,6 +219,7 @@ export default function Movimenti() {
                   </td>
                   <td className="mono">{m.quantita}</td>
                   <td>{m.dipendenti ? `${m.dipendenti.cognome} ${m.dipendenti.nome}` : '—'}</td>
+                  <td>{m.stato ? <span className={`badge ${m.stato === 'Reso' ? 'low' : 'ok'}`}>{m.stato}</span> : '—'}</td>
                   <td style={{ color: 'var(--graphite)' }}>{m.note || '—'}</td>
                 </tr>
               ))}

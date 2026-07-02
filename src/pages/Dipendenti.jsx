@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import TagChip from '../components/TagChip'
 
+const STATI = ['Consegnato', 'Reso', 'Altro']
+
 export default function Dipendenti() {
   const [dipendenti, setDipendenti] = useState([])
   const [sedi, setSedi] = useState([])
   const [ruoli, setRuoli] = useState([])
+  const [aziende, setAziende] = useState([])
+  const [totaliAssegnati, setTotaliAssegnati] = useState({}) // dipendente_id -> numero pezzi attualmente assegnati
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -17,6 +21,7 @@ export default function Dipendenti() {
   const [form, setForm] = useState(vuoto)
   const [nuovaSede, setNuovaSede] = useState('')
   const [nuovaSedeRegione, setNuovaSedeRegione] = useState('')
+  const [nuovaSedeAzienda, setNuovaSedeAzienda] = useState('')
   const [nuovoRuolo, setNuovoRuolo] = useState('')
 
   // Sedi raggruppate per regione, per popolare i menu a tendina in modo ordinato
@@ -30,15 +35,26 @@ export default function Dipendenti() {
 
   async function load() {
     setLoading(true)
-    const [{ data: dip, error: dipErr }, { data: sd }, { data: rl }] = await Promise.all([
-      supabase.from('dipendenti').select('*, sedi(nome), ruoli(nome)').eq('attivo', true).order('cognome'),
-      supabase.from('sedi').select('*').order('nome'),
+    const [{ data: dip, error: dipErr }, { data: sd }, { data: rl }, { data: az }, { data: scarichi }] = await Promise.all([
+      supabase.from('dipendenti').select('*, sedi(nome, regione), ruoli(nome)').eq('attivo', true).order('cognome'),
+      supabase.from('sedi').select('*, aziende(nome)').order('nome'),
       supabase.from('ruoli').select('*').order('nome'),
+      supabase.from('aziende').select('*').order('nome'),
+      supabase.from('movimenti').select('dipendente_id, quantita, stato').eq('tipo', 'Scarico').not('dipendente_id', 'is', null),
     ])
     if (dipErr) setError(dipErr.message)
     setDipendenti(dip || [])
     setSedi(sd || [])
     setRuoli(rl || [])
+    setAziende(az || [])
+
+    const totali = {}
+    for (const m of scarichi || []) {
+      if ((m.stato || 'Consegnato') === 'Reso') continue // reso: non conta più come assegnato
+      totali[m.dipendente_id] = (totali[m.dipendente_id] || 0) + m.quantita
+    }
+    setTotaliAssegnati(totali)
+
     setLoading(false)
   }
 
@@ -67,8 +83,14 @@ export default function Dipendenti() {
     const { error } = await supabase.from('sedi').insert({
       nome: nuovaSede.trim(),
       regione: nuovaSedeRegione.trim() || null,
+      azienda_id: nuovaSedeAzienda || null,
     })
-    if (!error) { setNuovaSede(''); setNuovaSedeRegione(''); load() }
+    if (!error) { setNuovaSede(''); setNuovaSedeRegione(''); setNuovaSedeAzienda(''); load() }
+  }
+
+  async function aggiornaSocietaSede(sedeId, aziendaId) {
+    await supabase.from('sedi').update({ azienda_id: aziendaId || null }).eq('id', sedeId)
+    load()
   }
 
   async function aggiungiRuolo(e) {
@@ -87,13 +109,22 @@ export default function Dipendenti() {
   async function toggleStorico(id) {
     if (aperto === id) { setAperto(null); return }
     setAperto(id)
-    if (!storico[id]) {
-      const { data } = await supabase.from('movimenti')
-        .select('*, articoli(codice, tipologia, colore, genere, taglia), aziende(nome)')
-        .eq('dipendente_id', id)
-        .order('data_mov', { ascending: false })
-      setStorico(s => ({ ...s, [id]: data || [] }))
-    }
+    await caricaStorico(id)
+  }
+
+  async function caricaStorico(id) {
+    const { data } = await supabase.from('movimenti')
+      .select('*, articoli(codice, tipologia, colore, genere, taglia), aziende(nome)')
+      .eq('dipendente_id', id)
+      .order('data_mov', { ascending: false })
+    setStorico(s => ({ ...s, [id]: data || [] }))
+  }
+
+  async function aggiornaMovimento(dipendenteId, movimentoId, campi) {
+    await supabase.from('movimenti').update(campi).eq('id', movimentoId)
+    await caricaStorico(dipendenteId)
+    // il totale assegnato e le giacenze possono essere cambiati (es. Reso) -> ricarico tutto
+    load()
   }
 
   const filtrati = filtroSede ? dipendenti.filter(d => d.sede_id === filtroSede) : dipendenti
@@ -101,9 +132,8 @@ export default function Dipendenti() {
   const gruppi = filtrati.reduce((acc, d) => {
     const nomeSede = d.sedi?.nome || 'Senza sede'
     const regione = d.sedi?.regione || ''
-    const chiave = nomeSede
-    acc[chiave] = acc[chiave] || { regione, dipendenti: [] }
-    acc[chiave].dipendenti.push(d)
+    acc[nomeSede] = acc[nomeSede] || { regione, dipendenti: [] }
+    acc[nomeSede].dipendenti.push(d)
     return acc
   }, {})
   const gruppiOrdinati = Object.entries(gruppi).sort((a, b) => {
@@ -117,7 +147,7 @@ export default function Dipendenti() {
       <div className="page-header">
         <div>
           <h2>Dipendenti</h2>
-          <p className="sub">Elenco dipendenti diviso per sede, con ruolo e storico divise assegnate.</p>
+          <p className="sub">Elenco dipendenti diviso per sede, con ruolo, divise assegnate e storico consegne/resi.</p>
         </div>
       </div>
 
@@ -158,7 +188,8 @@ export default function Dipendenti() {
         </form>
 
         <details style={{ marginTop: 16 }}>
-          <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--graphite)' }}>Gestisci sedi e ruoli</summary>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--graphite)' }}>Gestisci sedi, ruoli e società di fatturazione</summary>
+
           <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
             <form onSubmit={aggiungiSede} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div className="field" style={{ marginBottom: 0 }}>
@@ -172,6 +203,13 @@ export default function Dipendenti() {
                   {regioniOrdinate.map(r => <option key={r} value={r} />)}
                 </datalist>
               </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Società che fattura</label>
+                <select value={nuovaSedeAzienda} onChange={e => setNuovaSedeAzienda(e.target.value)}>
+                  <option value="">— da collegare —</option>
+                  {aziende.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                </select>
+              </div>
               <button className="btn btn-secondary">Aggiungi sede</button>
             </form>
             <form onSubmit={aggiungiRuolo} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
@@ -181,6 +219,30 @@ export default function Dipendenti() {
               </div>
               <button className="btn btn-secondary">Aggiungi ruolo</button>
             </form>
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--graphite)', marginBottom: 8 }}>
+              Società di fatturazione per sede esistente
+            </div>
+            <table>
+              <thead>
+                <tr><th>Sede</th><th>Società che fattura</th></tr>
+              </thead>
+              <tbody>
+                {sedi.map(s => (
+                  <tr key={s.id}>
+                    <td>{s.nome}</td>
+                    <td>
+                      <select value={s.azienda_id || ''} onChange={e => aggiornaSocietaSede(s.id, e.target.value)}>
+                        <option value="">— non collegata —</option>
+                        {aziende.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </details>
       </div>
@@ -212,6 +274,7 @@ export default function Dipendenti() {
                 <tr>
                   <th>Cognome e nome</th>
                   <th>Ruolo</th>
+                  <th>Divise assegnate</th>
                   <th></th>
                   <th></th>
                 </tr>
@@ -222,18 +285,23 @@ export default function Dipendenti() {
                     <tr key={d.id}>
                       <td>{d.cognome} {d.nome}</td>
                       <td style={{ color: 'var(--graphite)' }}>{d.ruoli?.nome || '—'}</td>
+                      <td>
+                        <span className="badge ok" style={{ background: totaliAssegnati[d.id] ? 'var(--moss-bg)' : '#F0EEE7', color: totaliAssegnati[d.id] ? 'var(--moss)' : 'var(--graphite)' }}>
+                          {totaliAssegnati[d.id] || 0} pezzi
+                        </span>
+                      </td>
                       <td><button className="btn btn-secondary" onClick={() => toggleStorico(d.id)}>{aperto === d.id ? 'Nascondi storico' : 'Vedi divise assegnate'}</button></td>
                       <td><button className="btn btn-secondary" onClick={() => disattiva(d.id)}>Disattiva</button></td>
                     </tr>
                     {aperto === d.id && (
                       <tr>
-                        <td colSpan={4} style={{ background: 'var(--canvas)' }}>
+                        <td colSpan={5} style={{ background: 'var(--canvas)' }}>
                           {!storico[d.id] ? (
                             <span style={{ color: 'var(--graphite)' }}>Caricamento…</span>
-                          ) : storico[d.id].length === 0 ? (
+                          ) : storico[d.id].filter(m => m.tipo === 'Scarico').length === 0 ? (
                             <span style={{ color: 'var(--graphite)' }}>Nessuna divisa assegnata finora.</span>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '6px 0' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0' }}>
                               {storico[d.id].filter(m => m.tipo === 'Scarico').map(m => (
                                 <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, flexWrap: 'wrap' }}>
                                   <span className="mono" style={{ color: 'var(--graphite)', width: 90 }}>{m.data_mov}</span>
@@ -241,7 +309,20 @@ export default function Dipendenti() {
                                   <span>{m.articoli?.tipologia}</span>
                                   <span className="mono">×{m.quantita}</span>
                                   {m.aziende && <span style={{ color: 'var(--steel)', fontSize: 12 }}>{m.aziende.nome}</span>}
-                                  {m.note && <span style={{ color: 'var(--graphite)' }}>— {m.note}</span>}
+                                  <select
+                                    value={m.stato || 'Consegnato'}
+                                    onChange={e => aggiornaMovimento(d.id, m.id, { stato: e.target.value })}
+                                    style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--line)' }}
+                                  >
+                                    {STATI.map(s => <option key={s} value={s}>{s}</option>)}
+                                  </select>
+                                  <input
+                                    type="text"
+                                    defaultValue={m.note || ''}
+                                    placeholder="Note…"
+                                    onBlur={e => { if (e.target.value !== (m.note || '')) aggiornaMovimento(d.id, m.id, { note: e.target.value || null }) }}
+                                    style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--line)', flex: '1 1 140px', minWidth: 120 }}
+                                  />
                                 </div>
                               ))}
                             </div>
