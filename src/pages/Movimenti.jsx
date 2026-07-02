@@ -7,28 +7,32 @@ const oggi = () => new Date().toISOString().slice(0, 10)
 export default function Movimenti() {
   const [articoli, setArticoli] = useState([])
   const [dipendenti, setDipendenti] = useState([])
+  const [aziende, setAziende] = useState([])
   const [movimenti, setMovimenti] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [filtroAzienda, setFiltroAzienda] = useState('')
 
   const [form, setForm] = useState({
-    data_mov: oggi(), tipo: 'Scarico', articolo_id: '', quantita: 1, dipendente_id: '', note: '',
+    data_mov: oggi(), tipo: 'Scarico', articolo_id: '', quantita: 1, dipendente_id: '', azienda_id: '', note: '',
   })
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: art }, { data: dip }, { data: mov, error: movErr }] = await Promise.all([
+    const [{ data: art }, { data: dip }, { data: az }, { data: mov, error: movErr }] = await Promise.all([
       supabase.from('articoli').select('*').eq('attivo', true).order('tipologia'),
       supabase.from('dipendenti').select('*, sedi(nome)').eq('attivo', true).order('cognome'),
+      supabase.from('aziende').select('*').order('nome'),
       supabase.from('movimenti')
-        .select('*, articoli(codice, tipologia, colore, genere, taglia), dipendenti(nome, cognome)')
+        .select('*, articoli(codice, tipologia, colore, genere, taglia), dipendenti(nome, cognome), aziende(nome)')
         .order('data_mov', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(60),
+        .limit(80),
     ])
     setArticoli(art || [])
     setDipendenti(dip || [])
+    setAziende(az || [])
     if (movErr) setError(movErr.message)
     setMovimenti(mov || [])
     setLoading(false)
@@ -46,6 +50,7 @@ export default function Movimenti() {
     setSuccess('')
 
     if (!form.articolo_id) return setError('Seleziona un articolo.')
+    if (!form.azienda_id) return setError('Seleziona la società.')
     if (form.tipo === 'Scarico' && !form.dipendente_id) return setError('Per uno scarico devi indicare il dipendente.')
 
     const { data: userData } = await supabase.auth.getUser()
@@ -54,6 +59,7 @@ export default function Movimenti() {
       data_mov: form.data_mov,
       tipo: form.tipo,
       articolo_id: form.articolo_id,
+      azienda_id: form.azienda_id,
       quantita: Number(form.quantita),
       dipendente_id: form.tipo === 'Scarico' ? form.dipendente_id : (form.dipendente_id || null),
       note: form.note || null,
@@ -70,12 +76,14 @@ export default function Movimenti() {
     loadAll()
   }
 
+  const movimentiFiltrati = filtroAzienda ? movimenti.filter(m => m.azienda_id === filtroAzienda) : movimenti
+
   return (
     <div>
       <div className="page-header">
         <div>
           <h2>Movimenti</h2>
-          <p className="sub">Registra un carico (arrivo dal fornitore) o uno scarico (assegnazione a un dipendente).</p>
+          <p className="sub">Registra un carico (arrivo dal fornitore) o uno scarico (assegnazione), indicando sempre la società di riferimento.</p>
         </div>
       </div>
 
@@ -94,6 +102,13 @@ export default function Movimenti() {
               <select value={form.tipo} onChange={e => updateField('tipo', e.target.value)}>
                 <option>Scarico</option>
                 <option>Carico</option>
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <label>Società</label>
+              <select value={form.azienda_id} onChange={e => updateField('azienda_id', e.target.value)} required>
+                <option value="">Seleziona società…</option>
+                {aziende.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
               </select>
             </div>
             <div className="field" style={{ gridColumn: 'span 2' }}>
@@ -133,9 +148,15 @@ export default function Movimenti() {
 
       <div className="card">
         <h3>Ultimi movimenti</h3>
+        <div className="filter-bar">
+          <select value={filtroAzienda} onChange={e => setFiltroAzienda(e.target.value)}>
+            <option value="">Tutte le società</option>
+            {aziende.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+          </select>
+        </div>
         {loading ? (
           <div className="empty-state">Caricamento…</div>
-        ) : movimenti.length === 0 ? (
+        ) : movimentiFiltrati.length === 0 ? (
           <div className="empty-state">Nessun movimento registrato ancora.</div>
         ) : (
           <table>
@@ -143,6 +164,7 @@ export default function Movimenti() {
               <tr>
                 <th>Data</th>
                 <th>Tipo</th>
+                <th>Società</th>
                 <th>Articolo</th>
                 <th>Qtà</th>
                 <th>Dipendente</th>
@@ -150,10 +172,11 @@ export default function Movimenti() {
               </tr>
             </thead>
             <tbody>
-              {movimenti.map(m => (
+              {movimentiFiltrati.map(m => (
                 <tr key={m.id}>
                   <td className="mono">{m.data_mov}</td>
                   <td><span className={`badge ${m.tipo === 'Carico' ? 'carico' : 'scarico'}`}>{m.tipo}</span></td>
+                  <td style={{ fontSize: 12.5 }}>{m.aziende?.nome || '—'}</td>
                   <td>
                     {m.articoli
                       ? <TagChip colore={m.articoli.colore} genere={m.articoli.genere} taglia={m.articoli.taglia} codice={m.articoli.codice} />
