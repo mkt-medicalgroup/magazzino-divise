@@ -8,6 +8,7 @@ const nuovaRiga = () => ({ _key: crypto.randomUUID(), articolo_id: '', quantita:
 export default function Movimenti() {
   const [articoli, setArticoli] = useState([])
   const [aziende, setAziende] = useState([])
+  const [dipendenti, setDipendenti] = useState([])
   const [movimenti, setMovimenti] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -16,22 +17,32 @@ export default function Movimenti() {
   const [inModifica, setInModifica] = useState(null) // id riga movimento in modifica
   const [formModifica, setFormModifica] = useState({ data_mov: '', articolo_id: '', quantita: 1, note: '' })
 
+  const [modalita, setModalita] = useState('movimento') // 'movimento' | 'assegna'
+
   const [testata, setTestata] = useState({ data_mov: oggi(), tipo: 'Scarico', azienda_id: '', riferimento: '', note: '' })
   const [righe, setRighe] = useState([nuovaRiga()])
 
+  const [assegnaForm, setAssegnaForm] = useState({ data_assegnazione: oggi(), articolo_id: '', note: '' })
+  const [selezioni, setSelezioni] = useState({}) // dipendente_id -> { selezionato, quantita }
+  const [ricercaDipendente, setRicercaDipendente] = useState('')
+  const [erroreAssegna, setErroreAssegna] = useState('')
+  const [successoAssegna, setSuccessoAssegna] = useState('')
+
   async function loadAll() {
     setLoading(true)
-    const [{ data: art }, { data: az }, { data: mov, error: movErr }] = await Promise.all([
+    const [{ data: art }, { data: az }, { data: dip }, { data: mov, error: movErr }] = await Promise.all([
       supabase.from('articoli').select('*').eq('attivo', true).order('tipologia'),
       supabase.from('aziende').select('*').order('nome'),
+      supabase.from('dipendenti').select('*, sedi(nome, azienda_id)').eq('attivo', true).order('cognome'),
       supabase.from('movimenti')
-        .select('*, articoli(codice, tipologia, colore, genere, taglia), aziende(nome)')
+        .select('*, articoli(codice, tipologia, colore, colore_hex, genere, taglia), aziende(nome)')
         .order('data_mov', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(200),
     ])
     setArticoli(art || [])
     setAziende(az || [])
+    setDipendenti(dip || [])
     if (movErr) setError(movErr.message)
     setMovimenti(mov || [])
     setLoading(false)
@@ -107,7 +118,54 @@ export default function Movimenti() {
     loadAll()
   }
 
+  function toggleSelezione(id, checked) {
+    setSelezioni(s => ({ ...s, [id]: { selezionato: checked, quantita: s[id]?.quantita || 1 } }))
+  }
+  function aggiornaQuantitaSelezione(id, quantita) {
+    setSelezioni(s => ({ ...s, [id]: { selezionato: s[id]?.selezionato ?? true, quantita } }))
+  }
+
+  async function handleAssegnaSubmit(e) {
+    e.preventDefault()
+    setErroreAssegna(''); setSuccessoAssegna('')
+
+    if (!assegnaForm.articolo_id) return setErroreAssegna('Seleziona un articolo.')
+    const selezionati = dipendenti.filter(d => selezioni[d.id]?.selezionato && Number(selezioni[d.id]?.quantita) > 0)
+    if (selezionati.length === 0) return setErroreAssegna('Seleziona almeno un dipendente con una quantità valida.')
+    const senzaAzienda = selezionati.filter(d => !d.sedi?.azienda_id)
+    if (senzaAzienda.length > 0) {
+      return setErroreAssegna(`Questi dipendenti non hanno una sede collegata a una società: ${senzaAzienda.map(d => `${d.cognome} ${d.nome}`).join(', ')}. Collegala in Dipendenti > Gestisci sedi prima di procedere.`)
+    }
+
+    const { data: userData } = await supabase.auth.getUser()
+    const payload = selezionati.map(d => ({
+      data_assegnazione: assegnaForm.data_assegnazione,
+      articolo_id: assegnaForm.articolo_id,
+      azienda_id: d.sedi.azienda_id,
+      dipendente_id: d.id,
+      quantita: Number(selezioni[d.id].quantita),
+      stato: 'Consegnato',
+      note: assegnaForm.note || null,
+      creato_da: userData?.user?.id || null,
+    }))
+
+    const { error } = await supabase.from('assegnazioni').insert(payload)
+    if (error) {
+      setErroreAssegna(error.message.includes('Giacenza insufficiente') ? error.message : `Errore: ${error.message}`)
+      return
+    }
+    setSuccessoAssegna(`Assegnato a ${selezionati.length} dipendenti.`)
+    setSelezioni({})
+    setAssegnaForm(f => ({ ...f, articolo_id: '', note: '' }))
+  }
+
+  const dipendentiVisibili = ricercaDipendente.trim()
+    ? dipendenti.filter(d => `${d.cognome} ${d.nome}`.toLowerCase().includes(ricercaDipendente.toLowerCase()))
+    : dipendenti
+  const numeroSelezionati = Object.values(selezioni).filter(s => s.selezionato).length
+
   const movimentiFiltrati = filtroAzienda ? movimenti.filter(m => m.azienda_id === filtroAzienda) : movimenti
+
 
   // Raggruppa le righe per registrazione (stesso gruppo_id = stessa fattura/registrazione)
   const gruppi = []
@@ -131,6 +189,85 @@ export default function Movimenti() {
       </div>
 
       <div className="card">
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+          <button type="button" className={modalita === 'movimento' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setModalita('movimento')}>Carico / Scarico</button>
+          <button type="button" className={modalita === 'assegna' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setModalita('assegna')}>Assegna a dipendenti</button>
+        </div>
+
+        {modalita === 'assegna' ? (
+          <>
+            <h3>Assegna un articolo a più dipendenti</h3>
+            {erroreAssegna && <div className="alert error">{erroreAssegna}</div>}
+            {successoAssegna && <div className="alert success">{successoAssegna}</div>}
+            <form onSubmit={handleAssegnaSubmit}>
+              <div className="form-grid">
+                <div className="field">
+                  <label>Data</label>
+                  <input type="date" value={assegnaForm.data_assegnazione} onChange={e => setAssegnaForm(f => ({ ...f, data_assegnazione: e.target.value }))} required />
+                </div>
+                <div className="field" style={{ gridColumn: 'span 2' }}>
+                  <label>Articolo</label>
+                  <select value={assegnaForm.articolo_id} onChange={e => setAssegnaForm(f => ({ ...f, articolo_id: e.target.value }))} required>
+                    <option value="">Seleziona articolo…</option>
+                    {articoli.map(a => (
+                      <option key={a.id} value={a.id}>{a.tipologia} · {a.colore} · {a.genere} · {a.taglia} ({a.codice})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Note (per tutti)</label>
+                  <input type="text" value={assegnaForm.note} onChange={e => setAssegnaForm(f => ({ ...f, note: e.target.value }))} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '10px 0' }}>
+                <input
+                  type="text" placeholder="Cerca dipendente per nome…" value={ricercaDipendente}
+                  onChange={e => setRicercaDipendente(e.target.value)}
+                  style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, minWidth: 220 }}
+                />
+                <span style={{ fontSize: 13, color: 'var(--graphite)' }}>{numeroSelezionati} dipendenti selezionati</span>
+              </div>
+
+              <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 36 }}></th>
+                      <th>Dipendente</th>
+                      <th>Sede</th>
+                      <th style={{ width: 90 }}>Quantità</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dipendentiVisibili.map(d => {
+                      const sel = selezioni[d.id]
+                      return (
+                        <tr key={d.id}>
+                          <td>
+                            <input type="checkbox" checked={!!sel?.selezionato} onChange={e => toggleSelezione(d.id, e.target.checked)} />
+                          </td>
+                          <td>{d.cognome} {d.nome}</td>
+                          <td style={{ color: 'var(--graphite)', fontSize: 12.5 }}>{d.sedi?.nome || 'senza sede'}{!d.sedi?.azienda_id && ' — ⚠ società non collegata'}</td>
+                          <td>
+                            <input
+                              type="number" min="1" value={sel?.quantita ?? 1}
+                              onChange={e => aggiornaQuantitaSelezione(d.id, e.target.value)}
+                              style={{ width: 60, padding: '5px 7px', border: '1px solid var(--line)', borderRadius: 6 }}
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <button className="btn btn-primary" style={{ marginTop: 14 }}>Assegna ai dipendenti selezionati</button>
+            </form>
+          </>
+        ) : (
+          <>
         <h3>Nuovo movimento</h3>
         {error && <div className="alert error">{error}</div>}
         {success && <div className="alert success">{success}</div>}
@@ -195,6 +332,8 @@ export default function Movimenti() {
           <br />
           <button className="btn btn-primary">Registra movimento</button>
         </form>
+          </>
+        )}
       </div>
 
       <div className="card">
@@ -254,7 +393,7 @@ export default function Movimenti() {
                           <tr key={m.id}>
                             <td>
                               {m.articoli
-                                ? <TagChip colore={m.articoli.colore} genere={m.articoli.genere} taglia={m.articoli.taglia} codice={m.articoli.codice} />
+                                ? <TagChip colore={m.articoli.colore} coloreHex={m.articoli.colore_hex} genere={m.articoli.genere} taglia={m.articoli.taglia} codice={m.articoli.codice} />
                                 : '—'}
                               {' '}
                               <span style={{ color: 'var(--graphite)', fontSize: 12.5 }}>{m.articoli?.tipologia}</span>

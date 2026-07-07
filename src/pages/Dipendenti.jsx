@@ -166,7 +166,7 @@ export default function Dipendenti() {
 
   async function caricaStorico(id) {
     const { data } = await supabase.from('assegnazioni')
-      .select('*, articoli(codice, tipologia, colore, genere, taglia), aziende(nome)')
+      .select('*, articoli(codice, tipologia, colore, colore_hex, genere, taglia), aziende(nome)')
       .eq('dipendente_id', id)
       .order('data_assegnazione', { ascending: false })
     setStorico(s => ({ ...s, [id]: data || [] }))
@@ -417,7 +417,7 @@ export default function Dipendenti() {
                               {storico[d.id].map(a => (
                                 <div key={a.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, flexWrap: 'wrap' }}>
                                   <span className="mono" style={{ color: 'var(--graphite)', width: 90 }}>{a.data_assegnazione}</span>
-                                  {a.articoli && <TagChip colore={a.articoli.colore} genere={a.articoli.genere} taglia={a.articoli.taglia} codice={a.articoli.codice} />}
+                                  {a.articoli && <TagChip colore={a.articoli.colore} coloreHex={a.articoli.colore_hex} genere={a.articoli.genere} taglia={a.articoli.taglia} codice={a.articoli.codice} />}
                                   <span>{a.articoli?.tipologia}</span>
                                   <span className="mono">×{a.quantita}</span>
                                   {a.aziende && <span style={{ color: 'var(--steel)', fontSize: 12 }}>{a.aziende.nome}</span>}

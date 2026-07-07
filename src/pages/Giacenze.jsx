@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabaseClient'
-
-const COLOR_MAP = {
-  blu: '#3B6E8F', bianco: '#F5F5F0', verde: '#4C7A5E', nero: '#1B2430',
-  grigio: '#8A8F98', celeste: '#8FB8CF', bordeaux: '#6E2A2A', rosso: '#B03A2E',
-  azzurro: '#6FA8C0', giallo: '#D9B23C', arancione: '#C1531F', viola: '#6B4E8E',
-  rosa: '#D98CA0', beige: '#D8CBB0', marrone: '#6B4A34', panna: '#EFE7D6',
-}
+import { risolviColoreHex } from '../lib/colori'
 
 export default function Giacenze() {
   const [righe, setRighe] = useState([])       // formato lungo: articolo x azienda
@@ -119,7 +113,7 @@ export default function Giacenze() {
                   <tbody>
                     {righeAzienda.map(r => {
                       const basso = r.giacenza_attuale <= r.soglia_min
-                      const hex = COLOR_MAP[r.colore?.toLowerCase()] || '#B8B4A6'
+                      const hex = risolviColoreHex(r.colore, r.colore_hex)
                       return (
                         <tr key={r.articolo_id}>
                           <td>
