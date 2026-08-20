@@ -14,6 +14,7 @@ export default function Dipendenti() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [filtroSede, setFiltroSede] = useState('')
+  const [filtroRuolo, setFiltroRuolo] = useState('')
   const [aperto, setAperto] = useState(null)
   const [storico, setStorico] = useState({})
   const [inModifica, setInModifica] = useState(null) // id dipendente in modifica
@@ -179,7 +180,9 @@ export default function Dipendenti() {
     load()
   }
 
-  const filtrati = filtroSede ? dipendenti.filter(d => d.sede_id === filtroSede) : dipendenti
+  const filtrati = dipendenti
+    .filter(d => !filtroSede || d.sede_id === filtroSede)
+    .filter(d => !filtroRuolo || d.ruolo_id === filtroRuolo)
 
   const gruppi = filtrati.reduce((acc, d) => {
     const nomeSede = d.sedi?.nome || 'Senza sede'
@@ -307,6 +310,10 @@ export default function Dipendenti() {
               {sediPerRegione[reg].map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </optgroup>
           ))}
+        </select>
+        <select value={filtroRuolo} onChange={e => setFiltroRuolo(e.target.value)}>
+          <option value="">Tutte le aree</option>
+          {ruoli.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
         </select>
       </div>
 
