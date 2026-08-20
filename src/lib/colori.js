@@ -1,12 +1,8 @@
-// Palette di colori comuni per le divise, con codice esadecimale preciso.
-// Usata dal selettore nel catalogo (Articoli) e da TagChip per mostrare
-// uno swatch visivamente fedele al colore reale in tutta l'app.
-//
-// I colori con "codice" sono presi direttamente dai capi fotografati
-// (campionati dai pixel reali della foto fornita) — massima fedeltà.
-// Gli altri sono valori generici di riserva.
+// Palette dei colori reali delle divise, presi direttamente dai capi
+// fotografati (campionati dai pixel reali della foto fornita dal
+// fornitore) — massima fedeltà. Il campo "codice" è il codice colore
+// usato dal fornitore.
 export const PALETTE_COLORI = [
-  // --- Colori reali dei capi (dalla foto fornita) ---
   { nome: 'Black',          hex: '#2A2A2A', codice: '1' },
   { nome: 'Navy',           hex: '#242B49', codice: '10' },
   { nome: 'White',          hex: '#EEEDF0', codice: '3' },
@@ -18,26 +14,6 @@ export const PALETTE_COLORI = [
   { nome: 'Kiwi',           hex: '#B6E374', codice: '73' },
   { nome: 'Pacific blue',   hex: '#1FAAD1', codice: '74' },
   { nome: 'Royal blue',     hex: '#276CBE', codice: '76' },
-
-  // --- Colori generici di riserva (nessun capo fotografato ancora) ---
-  { nome: 'Blu navy',        hex: '#16243B' },
-  { nome: 'Celeste',         hex: '#8FB8CF' },
-  { nome: 'Azzurro',         hex: '#5B9BD5' },
-  { nome: 'Verde scuro',     hex: '#2F5233' },
-  { nome: 'Verde acqua',     hex: '#4FB8A6' },
-  { nome: 'Grigio scuro',    hex: '#4A4E54' },
-  { nome: 'Bordeaux',        hex: '#6E2A2A' },
-  { nome: 'Rosa',            hex: '#E8A0B4' },
-  { nome: 'Rosa antico',     hex: '#C98A9C' },
-  { nome: 'Viola',           hex: '#6B4E8E' },
-  { nome: 'Lilla',           hex: '#B49AC9' },
-  { nome: 'Giallo',          hex: '#E8C547' },
-  { nome: 'Senape',          hex: '#C9A227' },
-  { nome: 'Arancione',       hex: '#D2691E' },
-  { nome: 'Beige',           hex: '#D8CBB0' },
-  { nome: 'Panna',           hex: '#EFE7D6' },
-  { nome: 'Marrone',         hex: '#6B4A34' },
-  { nome: 'Tortora',         hex: '#A99C8B' },
 ]
 
 // Ricava il colore esatto da mostrare: usa l'hex salvato sull'articolo se
