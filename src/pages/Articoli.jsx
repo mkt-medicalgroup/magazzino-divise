@@ -3,15 +3,6 @@ import { supabase } from '../supabaseClient'
 import TagChip from '../components/TagChip'
 import { PALETTE_COLORI } from '../lib/colori'
 
-const PREFISSO = { Pantaloni: 'PAN', Casacca: 'CAS', Camice: 'CAM' }
-const GEN_LETTERA = { Uomo: 'U', Donna: 'D', Unisex: 'X' }
-
-function generaCodice({ tipologia, colore, genere, taglia }) {
-  if (!tipologia || !colore || !genere || !taglia) return ''
-  const coloreCod = colore.slice(0, 3).toUpperCase()
-  return `${PREFISSO[tipologia]}-${coloreCod}-${GEN_LETTERA[genere]}-${taglia.toUpperCase()}`
-}
-
 export default function Articoli() {
   const [articoli, setArticoli] = useState([])
   const [loading, setLoading] = useState(true)
@@ -19,7 +10,7 @@ export default function Articoli() {
   const [success, setSuccess] = useState('')
   const [colorePersonalizzato, setColorePersonalizzato] = useState(false)
 
-  const vuoto = { tipologia: 'Casacca', colore: '', colore_hex: '', genere: 'Uomo', taglia: '', soglia_min: 5 }
+  const vuoto = { tipologia: 'Casacca', colore: '', colore_hex: '', genere: 'Uomo', taglia: '', soglia_min: 5, codice: '' }
   const [form, setForm] = useState(vuoto)
 
   async function load() {
@@ -46,8 +37,9 @@ export default function Articoli() {
     setError('')
     setSuccess('')
     if (!form.colore.trim() || !form.taglia.trim()) return setError('Colore e taglia sono obbligatori.')
+    if (!form.codice.trim()) return setError('Inserisci il codice fornitore.')
 
-    const codice = generaCodice(form)
+    const codice = form.codice.trim().toUpperCase()
     const { error } = await supabase.from('articoli').insert({
       tipologia: form.tipologia,
       colore: form.colore.trim(),
@@ -58,7 +50,11 @@ export default function Articoli() {
       codice,
     })
     if (error) {
-      setError(error.code === '23505' ? 'Questa combinazione (tipologia/colore/genere/taglia) esiste già.' : error.message)
+      if (error.code === '23505') {
+        setError(error.message.includes('codice') ? 'Questo codice fornitore è già usato da un altro articolo.' : 'Questa combinazione (tipologia/colore/genere/taglia) esiste già.')
+      } else {
+        setError(error.message)
+      }
       return
     }
     setSuccess(`Articolo ${codice} creato.`)
@@ -168,8 +164,8 @@ export default function Articoli() {
           </div>
 
           <div className="field" style={{ marginTop: 14 }}>
-            <label>Codice generato</label>
-            <input type="text" className="mono" value={generaCodice(form) || '—'} disabled style={{ maxWidth: 220 }} />
+            <label>Codice fornitore</label>
+            <input type="text" className="mono" placeholder="es. il codice esatto del fornitore" value={form.codice} onChange={e => updateField('codice', e.target.value)} style={{ maxWidth: 220 }} required />
           </div>
 
           <button className="btn btn-primary">Aggiungi al catalogo</button>
