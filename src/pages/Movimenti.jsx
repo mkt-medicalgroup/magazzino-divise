@@ -23,6 +23,8 @@ export default function Movimenti() {
   const [righe, setRighe] = useState([nuovaRiga()])
 
   const [assegnaForm, setAssegnaForm] = useState({ data_assegnazione: oggi(), articolo_id: '', note: '' })
+  const [usaAltraGiacenza, setUsaAltraGiacenza] = useState(false)
+  const [aziendaAlternativa, setAziendaAlternativa] = useState('')
   const [selezioni, setSelezioni] = useState({}) // dipendente_id -> { selezionato, quantita }
   const [ricercaDipendente, setRicercaDipendente] = useState('')
   const [erroreAssegna, setErroreAssegna] = useState('')
@@ -132,16 +134,20 @@ export default function Movimenti() {
     if (!assegnaForm.articolo_id) return setErroreAssegna('Seleziona un articolo.')
     const selezionati = dipendenti.filter(d => selezioni[d.id]?.selezionato && Number(selezioni[d.id]?.quantita) > 0)
     if (selezionati.length === 0) return setErroreAssegna('Seleziona almeno un dipendente con una quantità valida.')
-    const senzaAzienda = selezionati.filter(d => !d.sedi?.azienda_id)
-    if (senzaAzienda.length > 0) {
-      return setErroreAssegna(`Questi dipendenti non hanno una sede collegata a una società: ${senzaAzienda.map(d => `${d.cognome} ${d.nome}`).join(', ')}. Collegala in Dipendenti > Gestisci sedi prima di procedere.`)
+    if (usaAltraGiacenza && !aziendaAlternativa) return setErroreAssegna('Seleziona da quale società prendere la giacenza.')
+
+    if (!usaAltraGiacenza) {
+      const senzaAzienda = selezionati.filter(d => !d.sedi?.azienda_id)
+      if (senzaAzienda.length > 0) {
+        return setErroreAssegna(`Questi dipendenti non hanno una sede collegata a una società: ${senzaAzienda.map(d => `${d.cognome} ${d.nome}`).join(', ')}. Collegala in Dipendenti > Gestisci sedi prima di procedere.`)
+      }
     }
 
     const { data: userData } = await supabase.auth.getUser()
     const payload = selezionati.map(d => ({
       data_assegnazione: assegnaForm.data_assegnazione,
       articolo_id: assegnaForm.articolo_id,
-      azienda_id: d.sedi.azienda_id,
+      azienda_id: usaAltraGiacenza ? aziendaAlternativa : d.sedi.azienda_id,
       dipendente_id: d.id,
       quantita: Number(selezioni[d.id].quantita),
       stato: 'Consegnato',
@@ -156,6 +162,8 @@ export default function Movimenti() {
     }
     setSuccessoAssegna(`Assegnato a ${selezionati.length} dipendenti.`)
     setSelezioni({})
+    setUsaAltraGiacenza(false)
+    setAziendaAlternativa('')
     setAssegnaForm(f => ({ ...f, articolo_id: '', note: '' }))
   }
 
@@ -199,6 +207,22 @@ export default function Movimenti() {
             <h3>Assegna un articolo a più dipendenti</h3>
             {erroreAssegna && <div className="alert error">{erroreAssegna}</div>}
             {successoAssegna && <div className="alert success">{successoAssegna}</div>}
+
+            {erroreAssegna.includes('Giacenza insufficiente') && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <input type="checkbox" checked={usaAltraGiacenza} onChange={e => setUsaAltraGiacenza(e.target.checked)} />
+                  Prendi da un'altra giacenza
+                </label>
+                {usaAltraGiacenza && (
+                  <select value={aziendaAlternativa} onChange={e => setAziendaAlternativa(e.target.value)} style={{ padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 6 }}>
+                    <option value="">Seleziona società…</option>
+                    {aziende.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                  </select>
+                )}
+              </div>
+            )}
+
             <form onSubmit={handleAssegnaSubmit}>
               <div className="form-grid">
                 <div className="field">
