@@ -15,6 +15,7 @@ export default function Dipendenti() {
   const [success, setSuccess] = useState('')
   const [filtroSede, setFiltroSede] = useState('')
   const [filtroRuolo, setFiltroRuolo] = useState('')
+  const [ricercaDipendente, setRicercaDipendente] = useState('')
   const [aperto, setAperto] = useState(null)
   const [storico, setStorico] = useState({})
   const [inModifica, setInModifica] = useState(null) // id dipendente in modifica
@@ -183,6 +184,7 @@ export default function Dipendenti() {
   const filtrati = dipendenti
     .filter(d => !filtroSede || d.sede_id === filtroSede)
     .filter(d => !filtroRuolo || d.ruolo_id === filtroRuolo)
+    .filter(d => !ricercaDipendente.trim() || `${d.cognome} ${d.nome}`.toLowerCase().includes(ricercaDipendente.trim().toLowerCase()))
 
   const gruppi = filtrati.reduce((acc, d) => {
     const nomeSede = d.sedi?.nome || 'Senza sede'
@@ -303,6 +305,11 @@ export default function Dipendenti() {
       </div>
 
       <div className="filter-bar">
+        <input
+          type="text" placeholder="Cerca dipendente per nome…" value={ricercaDipendente}
+          onChange={e => setRicercaDipendente(e.target.value)}
+          style={{ minWidth: 220 }}
+        />
         <select value={filtroSede} onChange={e => setFiltroSede(e.target.value)}>
           <option value="">Tutte le sedi</option>
           {regioniOrdinate.map(reg => (
