@@ -1,11 +1,7 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
-import Giacenze from './pages/Giacenze'
-import Movimenti from './pages/Movimenti'
-import Articoli from './pages/Articoli'
-import Dipendenti from './pages/Dipendenti'
 
 function PrivateArea() {
   const { session } = useAuth()
@@ -19,14 +15,7 @@ function PrivateArea() {
 
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/giacenze" replace />} />
-        <Route path="/giacenze" element={<Giacenze />} />
-        <Route path="/movimenti" element={<Movimenti />} />
-        <Route path="/articoli" element={<Articoli />} />
-        <Route path="/dipendenti" element={<Dipendenti />} />
-        <Route path="*" element={<Navigate to="/giacenze" replace />} />
-      </Route>
+      <Route path="/*" element={<Layout />} />
     </Routes>
   )
 }

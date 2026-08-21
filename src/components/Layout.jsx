@@ -1,8 +1,28 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuth } from '../lib/AuthContext'
+import Giacenze from '../pages/Giacenze'
+import Movimenti from '../pages/Movimenti'
+import Articoli from '../pages/Articoli'
+import Dipendenti from '../pages/Dipendenti'
+
+const SEZIONI_VALIDE = ['giacenze', 'movimenti', 'articoli', 'dipendenti']
 
 export default function Layout() {
   const { session, signOut } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const sezioneCorrente = location.pathname.replace(/^\//, '') || 'giacenze'
+  const sezione = SEZIONI_VALIDE.includes(sezioneCorrente) ? sezioneCorrente : 'giacenze'
+
+  // Se l'indirizzo non corrisponde a nessuna sezione nota (es. "/" o un
+  // link non valido), riporta a Giacenze senza smontare le pagine già aperte.
+  useEffect(() => {
+    if (!SEZIONI_VALIDE.includes(sezioneCorrente)) {
+      navigate('/giacenze', { replace: true })
+    }
+  }, [sezioneCorrente, navigate])
 
   return (
     <div className="app-shell">
@@ -25,7 +45,12 @@ export default function Layout() {
         </div>
       </aside>
       <main className="main">
-        <Outlet />
+        {/* Le 4 pagine restano sempre montate: passando da una all'altra
+            si nasconde/mostra con CSS, senza perdere ciò che stavi scrivendo. */}
+        <div style={{ display: sezione === 'giacenze' ? 'block' : 'none' }}><Giacenze /></div>
+        <div style={{ display: sezione === 'movimenti' ? 'block' : 'none' }}><Movimenti /></div>
+        <div style={{ display: sezione === 'articoli' ? 'block' : 'none' }}><Articoli /></div>
+        <div style={{ display: sezione === 'dipendenti' ? 'block' : 'none' }}><Dipendenti /></div>
       </main>
     </div>
   )
