@@ -2,7 +2,9 @@ import { HashRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import RichiediOrdine from './pages/RichiediOrdine'
 
+// Area privata: richiede login. Racchiude tutte le sezioni gestionali.
 function PrivateArea() {
   const { session } = useAuth()
 
@@ -12,20 +14,26 @@ function PrivateArea() {
   if (session === null) {
     return <Login />
   }
-
-  return (
-    <Routes>
-      <Route path="/*" element={<Layout />} />
-    </Routes>
-  )
+  return <Layout />
 }
 
 export default function App() {
   return (
     <HashRouter>
-      <AuthProvider>
-        <PrivateArea />
-      </AuthProvider>
+      <Routes>
+        {/* Modulo pubblico: nessun login richiesto, accessibile solo tramite link diretto */}
+        <Route path="/richiedi-ordine" element={<RichiediOrdine />} />
+
+        {/* Tutto il resto dell'app richiede autenticazione */}
+        <Route
+          path="/*"
+          element={
+            <AuthProvider>
+              <PrivateArea />
+            </AuthProvider>
+          }
+        />
+      </Routes>
     </HashRouter>
   )
 }
