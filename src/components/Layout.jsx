@@ -7,14 +7,16 @@ import Movimenti from '../pages/Movimenti'
 import Articoli from '../pages/Articoli'
 import Dipendenti from '../pages/Dipendenti'
 import RichiesteOrdini from '../pages/RichiesteOrdini'
+import RichiesteScarico from '../pages/RichiesteScarico'
 
-const SEZIONI_VALIDE = ['giacenze', 'movimenti', 'articoli', 'dipendenti', 'richieste-ordini']
+const SEZIONI_VALIDE = ['giacenze', 'movimenti', 'articoli', 'dipendenti', 'richieste-ordini', 'richieste-scarico']
 
 export default function Layout() {
   const { session, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [notificheNonLette, setNotificheNonLette] = useState(0)
+  const [notificheOrdini, setNotificheOrdini] = useState(0)
+  const [notificheScarico, setNotificheScarico] = useState(0)
 
   const sezioneCorrente = location.pathname.replace(/^\//, '') || 'giacenze'
   const sezione = SEZIONI_VALIDE.includes(sezioneCorrente) ? sezioneCorrente : 'giacenze'
@@ -26,8 +28,12 @@ export default function Layout() {
   }, [sezioneCorrente, navigate])
 
   async function caricaNotifiche() {
-    const { count } = await supabase.from('notifiche').select('id', { count: 'exact', head: true }).eq('letta', false)
-    setNotificheNonLette(count || 0)
+    const [{ count: ordini }, { count: scarico }] = await Promise.all([
+      supabase.from('notifiche').select('id', { count: 'exact', head: true }).eq('letta', false).eq('tipo', 'ordine'),
+      supabase.from('notifiche').select('id', { count: 'exact', head: true }).eq('letta', false).eq('tipo', 'scarico'),
+    ])
+    setNotificheOrdini(ordini || 0)
+    setNotificheScarico(scarico || 0)
   }
 
   useEffect(() => {
@@ -36,9 +42,9 @@ export default function Layout() {
     return () => clearInterval(intervallo)
   }, [])
 
-  // Quando si entra nella pagina Richieste > Ordini, le notifiche di tipo
-  // "ordine" vengono segnate come lette (gestito in RichiesteOrdini.jsx):
-  // ricontrolliamo il contatore appena si cambia sezione.
+  // Quando si entra in una delle due pagine Richieste, le relative notifiche
+  // vengono segnate come lette (gestito nelle pagine stesse): ricontrolliamo
+  // il contatore appena si cambia sezione.
   useEffect(() => { caricaNotifiche() }, [sezione])
 
   return (
@@ -59,9 +65,17 @@ export default function Layout() {
           </div>
           <NavLink to="/richieste-ordini" className={({ isActive }) => isActive ? 'active' : ''} style={{ justifyContent: 'space-between' }}>
             <span>Ordini</span>
-            {notificheNonLette > 0 && (
+            {notificheOrdini > 0 && (
               <span style={{ background: 'var(--orange)', color: '#fff', borderRadius: 999, fontSize: 11, fontWeight: 700, padding: '1px 7px' }}>
-                {notificheNonLette}
+                {notificheOrdini}
+              </span>
+            )}
+          </NavLink>
+          <NavLink to="/richieste-scarico" className={({ isActive }) => isActive ? 'active' : ''} style={{ justifyContent: 'space-between' }}>
+            <span>Scarico</span>
+            {notificheScarico > 0 && (
+              <span style={{ background: 'var(--orange)', color: '#fff', borderRadius: 999, fontSize: 11, fontWeight: 700, padding: '1px 7px' }}>
+                {notificheScarico}
               </span>
             )}
           </NavLink>
@@ -81,6 +95,7 @@ export default function Layout() {
         <div style={{ display: sezione === 'articoli' ? 'block' : 'none' }}><Articoli /></div>
         <div style={{ display: sezione === 'dipendenti' ? 'block' : 'none' }}><Dipendenti /></div>
         <div style={{ display: sezione === 'richieste-ordini' ? 'block' : 'none' }}><RichiesteOrdini /></div>
+        <div style={{ display: sezione === 'richieste-scarico' ? 'block' : 'none' }}><RichiesteScarico /></div>
       </main>
     </div>
   )

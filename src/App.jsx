@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './lib/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import RichiediOrdine from './pages/RichiediOrdine'
+import RichiediScarico from './pages/RichiediScarico'
 
 // Area privata: richiede login. Racchiude tutte le sezioni gestionali.
 function PrivateArea() {
@@ -23,6 +24,7 @@ export default function App() {
       <Routes>
         {/* Modulo pubblico: nessun login richiesto, accessibile solo tramite link diretto */}
         <Route path="/richiedi-ordine" element={<RichiediOrdine />} />
+        <Route path="/richiedi-scarico" element={<RichiediScarico />} />
 
         {/* Tutto il resto dell'app richiede autenticazione */}
         <Route
