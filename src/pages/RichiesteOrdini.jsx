@@ -64,7 +64,7 @@ export default function RichiesteOrdini() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Richieste — Ordini</h2>
+          <h2>Ordini</h2>
           <p className="sub">Ordini richiesti dal modulo pubblico, da evadere registrando poi il carico/l'assegnazione in Movimenti.</p>
         </div>
         <button className="btn btn-secondary" onClick={load}>Aggiorna</button>

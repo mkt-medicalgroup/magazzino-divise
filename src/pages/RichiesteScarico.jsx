@@ -75,7 +75,7 @@ export default function RichiesteScarico() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Richieste — Scarico</h2>
+          <h2>Scarico</h2>
           <p className="sub">Restituzioni di divise (es. dipendenti che lasciano l'azienda). Evadendo la richiesta, le quantità entrano nello stock della sede.</p>
         </div>
         <button className="btn btn-secondary" onClick={load}>Aggiorna</button>

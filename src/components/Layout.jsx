@@ -6,17 +6,15 @@ import Giacenze from '../pages/Giacenze'
 import Movimenti from '../pages/Movimenti'
 import Articoli from '../pages/Articoli'
 import Dipendenti from '../pages/Dipendenti'
-import RichiesteOrdini from '../pages/RichiesteOrdini'
-import RichiesteScarico from '../pages/RichiesteScarico'
+import Richieste from '../pages/Richieste'
 
-const SEZIONI_VALIDE = ['giacenze', 'movimenti', 'articoli', 'dipendenti', 'richieste-ordini', 'richieste-scarico']
+const SEZIONI_VALIDE = ['giacenze', 'movimenti', 'articoli', 'dipendenti', 'richieste']
 
 export default function Layout() {
   const { session, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [notificheOrdini, setNotificheOrdini] = useState(0)
-  const [notificheScarico, setNotificheScarico] = useState(0)
+  const [notificheTotali, setNotificheTotali] = useState(0)
 
   const sezioneCorrente = location.pathname.replace(/^\//, '') || 'giacenze'
   const sezione = SEZIONI_VALIDE.includes(sezioneCorrente) ? sezioneCorrente : 'giacenze'
@@ -28,12 +26,8 @@ export default function Layout() {
   }, [sezioneCorrente, navigate])
 
   async function caricaNotifiche() {
-    const [{ count: ordini }, { count: scarico }] = await Promise.all([
-      supabase.from('notifiche').select('id', { count: 'exact', head: true }).eq('letta', false).eq('tipo', 'ordine'),
-      supabase.from('notifiche').select('id', { count: 'exact', head: true }).eq('letta', false).eq('tipo', 'scarico'),
-    ])
-    setNotificheOrdini(ordini || 0)
-    setNotificheScarico(scarico || 0)
+    const { count } = await supabase.from('notifiche').select('id', { count: 'exact', head: true }).eq('letta', false)
+    setNotificheTotali(count || 0)
   }
 
   useEffect(() => {
@@ -42,9 +36,9 @@ export default function Layout() {
     return () => clearInterval(intervallo)
   }, [])
 
-  // Quando si entra in una delle due pagine Richieste, le relative notifiche
-  // vengono segnate come lette (gestito nelle pagine stesse): ricontrolliamo
-  // il contatore appena si cambia sezione.
+  // Quando si entra nella pagina Richieste, le notifiche vengono segnate
+  // come lette (gestito nelle pagine RichiesteOrdini/RichiesteScarico):
+  // ricontrolliamo il contatore appena si cambia sezione.
   useEffect(() => { caricaNotifiche() }, [sezione])
 
   return (
@@ -59,23 +53,11 @@ export default function Layout() {
           <NavLink to="/movimenti" className={({ isActive }) => isActive ? 'active' : ''}>Movimenti</NavLink>
           <NavLink to="/articoli" className={({ isActive }) => isActive ? 'active' : ''}>Catalogo articoli</NavLink>
           <NavLink to="/dipendenti" className={({ isActive }) => isActive ? 'active' : ''}>Dipendenti</NavLink>
-
-          <div style={{ marginTop: 14, marginBottom: 4, padding: '0 12px', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#7C8697' }}>
-            Richieste
-          </div>
-          <NavLink to="/richieste-ordini" className={({ isActive }) => isActive ? 'active' : ''} style={{ justifyContent: 'space-between' }}>
-            <span>Ordini</span>
-            {notificheOrdini > 0 && (
+          <NavLink to="/richieste" className={({ isActive }) => isActive ? 'active' : ''} style={{ justifyContent: 'space-between' }}>
+            <span>Richieste</span>
+            {notificheTotali > 0 && (
               <span style={{ background: 'var(--orange)', color: '#fff', borderRadius: 999, fontSize: 11, fontWeight: 700, padding: '1px 7px' }}>
-                {notificheOrdini}
-              </span>
-            )}
-          </NavLink>
-          <NavLink to="/richieste-scarico" className={({ isActive }) => isActive ? 'active' : ''} style={{ justifyContent: 'space-between' }}>
-            <span>Scarico</span>
-            {notificheScarico > 0 && (
-              <span style={{ background: 'var(--orange)', color: '#fff', borderRadius: 999, fontSize: 11, fontWeight: 700, padding: '1px 7px' }}>
-                {notificheScarico}
+                {notificheTotali}
               </span>
             )}
           </NavLink>
@@ -94,8 +76,7 @@ export default function Layout() {
         <div style={{ display: sezione === 'movimenti' ? 'block' : 'none' }}><Movimenti /></div>
         <div style={{ display: sezione === 'articoli' ? 'block' : 'none' }}><Articoli /></div>
         <div style={{ display: sezione === 'dipendenti' ? 'block' : 'none' }}><Dipendenti /></div>
-        <div style={{ display: sezione === 'richieste-ordini' ? 'block' : 'none' }}><RichiesteOrdini /></div>
-        <div style={{ display: sezione === 'richieste-scarico' ? 'block' : 'none' }}><RichiesteScarico /></div>
+        <div style={{ display: sezione === 'richieste' ? 'block' : 'none' }}><Richieste /></div>
       </main>
     </div>
   )
