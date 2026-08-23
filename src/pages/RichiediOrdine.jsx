@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import CercaDipendente from '../components/CercaDipendente'
 
 const nuovaRiga = () => ({ _key: crypto.randomUUID(), articolo_id: '', quantita: 1 })
 
@@ -27,7 +28,7 @@ export default function RichiediOrdine() {
       setCaricamento(true)
       const [{ data: art, error: artErr }, { data: dip }, { data: sd }] = await Promise.all([
         supabase.from('articoli').select('*').eq('attivo', true).order('tipologia'),
-        supabase.from('dipendenti').select('id, nome, cognome, sede_id').eq('attivo', true).order('cognome'),
+        supabase.from('dipendenti').select('id, nome, cognome, sede_id, sedi(nome)').eq('attivo', true).order('cognome'),
         supabase.from('sedi').select('*').order('nome'),
       ])
       if (artErr) setErrore('Non riesco a caricare il modulo. Riprova tra poco o contatta chi ti ha inviato il link.')
@@ -146,11 +147,8 @@ export default function RichiediOrdine() {
 
           {modalitaDipendente === 'esistente' ? (
             <div className="field">
-              <label>Seleziona dipendente</label>
-              <select value={dipendenteId} onChange={e => setDipendenteId(e.target.value)} required>
-                <option value="">Seleziona…</option>
-                {dipendenti.map(d => <option key={d.id} value={d.id}>{d.cognome} {d.nome}</option>)}
-              </select>
+              <label>Cerca dipendente</label>
+              <CercaDipendente dipendenti={dipendenti} valore={dipendenteId} onScegli={setDipendenteId} />
             </div>
           ) : (
             <div className="form-grid">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import CercaDipendente from '../components/CercaDipendente'
 
 const nuovaRiga = () => ({ _key: crypto.randomUUID(), articolo_id: '', quantita: 1 })
 
@@ -137,11 +138,8 @@ export default function RichiediScarico() {
 
         <form onSubmit={handleSubmit}>
           <div className="field">
-            <label>Dipendente</label>
-            <select value={dipendenteId} onChange={e => setDipendenteId(e.target.value)} required>
-              <option value="">Seleziona…</option>
-              {dipendenti.map(d => <option key={d.id} value={d.id}>{d.cognome} {d.nome} — {d.sedi?.nome || 'senza sede'}</option>)}
-            </select>
+            <label>Cerca dipendente</label>
+            <CercaDipendente dipendenti={dipendenti} valore={dipendenteId} onScegli={setDipendenteId} />
           </div>
 
           {assegnazioniAttuali && assegnazioniAttuali.length > 0 && (
