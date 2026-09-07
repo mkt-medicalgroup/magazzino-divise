@@ -23,6 +23,8 @@ export default function Dipendenti() {
   const [articoli, setArticoli] = useState([])
   const [formAssegna, setFormAssegna] = useState({ articolo_id: '', quantita: 1, data_assegnazione: new Date().toISOString().slice(0, 10), note: '' })
   const [erroreAssegna, setErroreAssegna] = useState('')
+  const [assegnazioneInModifica, setAssegnazioneInModifica] = useState(null)
+  const [formModificaAssegnazione, setFormModificaAssegnazione] = useState({ articolo_id: '', quantita: 1 })
 
   const vuoto = { nome: '', cognome: '', sede_id: '', ruolo_id: '' }
   const [form, setForm] = useState(vuoto)
@@ -178,6 +180,31 @@ export default function Dipendenti() {
     await supabase.from('assegnazioni').update(campi).eq('id', assegnazioneId)
     await caricaStorico(dipendenteId)
     // il totale assegnato e le giacenze possono essere cambiati (es. Reso) -> ricarico tutto
+    load()
+  }
+
+  async function eliminaAssegnazione(dipendenteId, assegnazioneId) {
+    if (!confirm('Eliminare questa divisa assegnata? L\'operazione non si può annullare.')) return
+    const { error } = await supabase.from('assegnazioni').delete().eq('id', assegnazioneId)
+    if (error) { setErroreAssegna(`Errore nell'eliminare: ${error.message}`); return }
+    await caricaStorico(dipendenteId)
+    load()
+  }
+
+  function apriModificaAssegnazione(a) {
+    setAssegnazioneInModifica(a.id)
+    setFormModificaAssegnazione({ articolo_id: a.articolo_id, quantita: a.quantita })
+  }
+
+  async function salvaModificaAssegnazione(dipendenteId, assegnazioneId) {
+    if (!formModificaAssegnazione.articolo_id || Number(formModificaAssegnazione.quantita) <= 0) return
+    const { error } = await supabase.from('assegnazioni').update({
+      articolo_id: formModificaAssegnazione.articolo_id,
+      quantita: Number(formModificaAssegnazione.quantita),
+    }).eq('id', assegnazioneId)
+    if (error) { setErroreAssegna(`Errore nel salvare: ${error.message}`); return }
+    setAssegnazioneInModifica(null)
+    await caricaStorico(dipendenteId)
     load()
   }
 
@@ -429,27 +456,57 @@ export default function Dipendenti() {
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0' }}>
                               {storico[d.id].map(a => (
-                                <div key={a.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, flexWrap: 'wrap' }}>
-                                  <span className="mono" style={{ color: 'var(--graphite)', width: 90 }}>{a.data_assegnazione}</span>
-                                  {a.articoli && <TagChip colore={a.articoli.colore} coloreHex={a.articoli.colore_hex} genere={a.articoli.genere} taglia={a.articoli.taglia} codice={a.articoli.codice} />}
-                                  <span>{a.articoli?.tipologia}</span>
-                                  <span className="mono">×{a.quantita}</span>
-                                  {a.aziende && <span style={{ color: 'var(--steel)', fontSize: 12 }}>{a.aziende.nome}</span>}
-                                  <select
-                                    value={a.stato || 'Consegnato'}
-                                    onChange={e => aggiornaAssegnazione(d.id, a.id, { stato: e.target.value })}
-                                    style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--line)' }}
-                                  >
-                                    {STATI.map(s => <option key={s} value={s}>{s}</option>)}
-                                  </select>
-                                  <input
-                                    type="text"
-                                    defaultValue={a.note || ''}
-                                    placeholder="Note…"
-                                    onBlur={e => { if (e.target.value !== (a.note || '')) aggiornaAssegnazione(d.id, a.id, { note: e.target.value || null }) }}
-                                    style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--line)', flex: '1 1 140px', minWidth: 120 }}
-                                  />
-                                </div>
+                                assegnazioneInModifica === a.id ? (
+                                  <div key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, flexWrap: 'wrap', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 6, padding: 8 }}>
+                                    <select
+                                      value={formModificaAssegnazione.articolo_id}
+                                      onChange={e => setFormModificaAssegnazione(f => ({ ...f, articolo_id: e.target.value }))}
+                                      style={{ fontSize: 12.5, padding: '5px 7px', borderRadius: 4, border: '1px solid var(--line)', flex: '2 1 220px' }}
+                                    >
+                                      {articoli.map(art => (
+                                        <option key={art.id} value={art.id}>{art.tipologia} · {art.colore} · {art.genere} · {art.taglia}</option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="number" min="1" value={formModificaAssegnazione.quantita}
+                                      onChange={e => setFormModificaAssegnazione(f => ({ ...f, quantita: e.target.value }))}
+                                      style={{ width: 60, fontSize: 12.5, padding: '5px 7px', borderRadius: 4, border: '1px solid var(--line)' }}
+                                    />
+                                    <button type="button" className="btn btn-primary" onClick={() => salvaModificaAssegnazione(d.id, a.id)}>Salva</button>
+                                    <button type="button" className="btn btn-secondary" onClick={() => setAssegnazioneInModifica(null)}>Annulla</button>
+                                  </div>
+                                ) : (
+                                  <div key={a.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, flexWrap: 'wrap' }}>
+                                    <span className="mono" style={{ color: 'var(--graphite)', width: 90 }}>{a.data_assegnazione}</span>
+                                    {a.articoli && <TagChip colore={a.articoli.colore} coloreHex={a.articoli.colore_hex} genere={a.articoli.genere} taglia={a.articoli.taglia} codice={a.articoli.codice} />}
+                                    <span>{a.articoli?.tipologia}</span>
+                                    <span className="mono">×{a.quantita}</span>
+                                    {a.aziende && <span style={{ color: 'var(--steel)', fontSize: 12 }}>{a.aziende.nome}</span>}
+                                    <select
+                                      value={a.stato || 'Consegnato'}
+                                      onChange={e => aggiornaAssegnazione(d.id, a.id, { stato: e.target.value })}
+                                      style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--line)' }}
+                                    >
+                                      {STATI.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                    <input
+                                      type="text"
+                                      defaultValue={a.note || ''}
+                                      placeholder="Note…"
+                                      onBlur={e => { if (e.target.value !== (a.note || '')) aggiornaAssegnazione(d.id, a.id, { note: e.target.value || null }) }}
+                                      style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--line)', flex: '1 1 140px', minWidth: 120 }}
+                                    />
+                                    <button type="button" className="btn btn-secondary" onClick={() => apriModificaAssegnazione(a)} style={{ fontSize: 12, padding: '4px 8px' }}>Modifica</button>
+                                    <button
+                                      type="button"
+                                      onClick={() => eliminaAssegnazione(d.id, a.id)}
+                                      title="Elimina"
+                                      style={{ fontSize: 14, padding: '4px 8px', background: 'none', border: '1px solid var(--line)', borderRadius: 4, color: 'var(--orange)' }}
+                                    >
+                                      🗑
+                                    </button>
+                                  </div>
+                                )
                               ))}
                             </div>
                           )}
